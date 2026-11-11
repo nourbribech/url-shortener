@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest==9.2.0
+httpx2==2.16.0
+bandit==1.9.4
