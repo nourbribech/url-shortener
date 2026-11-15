@@ -1,0 +1,8 @@
+services:
+  api: #service name (container)
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      LOG_LEVEL: INFO
+    
