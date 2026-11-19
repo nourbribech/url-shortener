@@ -13,16 +13,16 @@ from pydantic import BaseModel, HttpUrl
 
 # ---- Configuration: read from the environment (12-factor) ----
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-
+'''I don’t hardcode settings. In Docker or Kubernetes I change behavior with env vars, not by rebuilding the image (the 12-factor idea). I give it a sensible default and call .upper() so info still works.'''
 
 # ---- Structured logging: one JSON object per line ----
-class JsonFormatter(logging.Formatter):
-    def format(self, record):
+class JsonFormatter(logging.Formatter): #Formatter instances are used to convert a LogRecord to text.
+    def format(self, record): #Format the specified record as dict instead of text (overrides the original format meth)
         entry = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
             "msg": record.getMessage(),
-            **getattr(record, "fields", {}),
+            **getattr(record, "fields", {}), # spreads the key and values of the dict in  record.fields and adds it to the entry dict
         }
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
@@ -36,11 +36,11 @@ log.addHandler(handler)
 log.setLevel(LOG_LEVEL)
 log.propagate = False
 
-# ---- Metrics ----
-REQUESTS = Counter("http_requests_total", "Total HTTP requests",
+# ---- Metrics ---- prometheus
+REQUESTS = Counter("http_requests_total", "Total HTTP requests",#how much traffic, and how many errors?
                    ["method", "path", "status"])
-LATENCY = Histogram("http_request_duration_seconds", "Request latency", ["path"])
-SHORTENED = Counter("urls_shortened_total", "Total URLs shortened")
+LATENCY = Histogram("http_request_duration_seconds", "Request latency", ["path"])#how slow are we
+SHORTENED = Counter("urls_shortened_total", "Total URLs shortened")#counts URLs created
 
 app = FastAPI(title="URL Shortener")
 URLS: dict[str, dict] = {}  # in-memory storage, lost on restart
@@ -60,14 +60,14 @@ if os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
     FastAPIInstrumentor.instrument_app(app)
 
 #middleware for observability in one place 
-@app.middleware("http")
+@app.middleware("http")  #this function should run for every HTTP request
 async def observe(request: Request, call_next):
     """Runs around every request: times it, counts it, logs it."""
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     start = time.perf_counter()
     status = 500
     try:
-        response = await call_next(request)
+        response = await call_next(request) #request = the incoming HTTP requestcall next:the function that passes the request to the next layer, eventually reaching your endpointresponse = what your endpoint returns
         status = response.status_code
         response.headers["x-request-id"] = request_id
         return response
@@ -89,7 +89,7 @@ class ShortenIn(BaseModel):
     url: HttpUrl
 
 
-def new_code(length: int = 6) -> str:
+def new_code(length: int = 6) -> str: #builds a 6-character random string and loops until it finds one not already in URLS
     while True:
         code = "".join(secrets.choice(ALPHABET) for _ in range(length))
         if code not in URLS:
